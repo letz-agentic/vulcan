@@ -11,8 +11,10 @@
   not care which they hold."
   (:require [clojure.java.io :as io]
             [next.jdbc :as jdbc]
+            [next.jdbc.prepare :as prep]
             [next.jdbc.result-set :as rs])
-  (:import (java.sql Connection)))
+  (:import (java.sql Connection PreparedStatement Timestamp)
+           (java.time Instant LocalDate)))
 
 (def default-db-path "data/vulcan.duckdb")
 
@@ -41,6 +43,19 @@
   java.sql.Array
   (read-column-by-label [^java.sql.Array v _] (vec (.getArray v)))
   (read-column-by-index [^java.sql.Array v _ _] (vec (.getArray v))))
+
+;; The write direction of the same seam. DuckDB's driver rejects java.time
+;; values with a bare "Unsupported parameter type", which is an unhelpful
+;; thing to discover from inside a HoneySQL-built WHERE clause. Teaching
+;; next.jdbc to bind them once means every query and every insert can pass an
+;; Instant or a LocalDate without each call site remembering to convert.
+(extend-protocol prep/SettableParameter
+  Instant
+  (set-parameter [v ^PreparedStatement ps ^long i]
+    (.setTimestamp ps i (Timestamp/from ^Instant v)))
+  LocalDate
+  (set-parameter [v ^PreparedStatement ps ^long i]
+    (.setDate ps i (java.sql.Date/valueOf ^LocalDate v))))
 
 (defn spec
   "JDBC spec for a DuckDB file path."

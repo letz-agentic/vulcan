@@ -11,26 +11,20 @@ they met reality.
 
 ## Status
 
-Milestones M1–M3 of the spec roadmap are implemented and tested.
+Milestones M1–M4 of the spec roadmap are implemented and tested.
 
 | Milestone | Scope | State |
 |---|---|---|
 | M1 | Store, migrations, Trivy ingest, fixtures, idempotency | done |
 | M2 | Report context, categorisation, fix-first score, diff, trend | done |
 | M3 | Chart toolkit, static rendering, notebooks, all four profiles | done |
-| M4 | CIRCL/EPSS enrichment, OpenVEX decisions | **not started** |
+| M4 | KEV/EPSS/CIRCL enrichment, cache freshness, OpenVEX decisions | done |
 | M5 | Corporate `reference.pptx`, offline CI render, hardening | **not started** |
 
 All four output profiles (`html`, `revealjs`, `pptx`, `pdf`) render, which is
 ahead of the M3 exit criterion — the spec put pptx and PDF in M5. What is *not*
 done from M5 is the corporate `reference.pptx` template, the offline CI render
 and the hardening pass.
-
-The `vulnerability` and `decision` tables exist and every layer reads them, so
-enrichment lands without a schema change. Until M4 they are empty, which means
-every finding currently categorises as `unlikely` on the exploitability axis —
-the appendix of every report says so explicitly rather than letting a reader
-assume otherwise.
 
 ## Requirements
 
@@ -87,10 +81,13 @@ trivy image --format json --list-all-pkgs --scanners vuln \
 # 2. load it
 bb ingest reports/
 
-# 3. see what is there
+# 3. add exploitability data: KEV, EPSS, descriptions
+bb enrich --max-age 7d
+
+# 4. see what is there
 bb summary
 
-# 4. render
+# 5. render
 bb render management/posture  --profile html
 bb render engineering/fix_first --profile pptx
 ```
@@ -110,6 +107,8 @@ bb ingest resources/fixtures/trivy
 | `bb check` | verify the pinned tools |
 | `bb migrate` | create or upgrade the store |
 | `bb ingest <path>` | ingest a file or directory (`--dry-run` to validate only) |
+| `bb enrich` | refresh KEV/EPSS/CIRCL (`--max-age 7d`, `--offline`, `--status`) |
+| `bb decisions` | OpenVEX `import <file>` / `export [file]` / `list` |
 | `bb summary` | print the KPI map for the current scope |
 | `bb render <nb> --profile <p>` | render one notebook |
 | `bb report --profiles html,pptx` | render notebooks across profiles |
@@ -144,12 +143,13 @@ REPL as `(vulcan.cli/-main "ingest" "reports/")`.
 src/vulcan/
   ingest/    json, schema (Malli), trivy (pure normalisation), dir (driver)
   store/     db, migrate, write, query          <- the only SQL
+  enrich/    provider, http, kev, epss, circl, cache, vex
   analysis/  categorize, score, diff, trend, core
   viz/       theme, charts, static (vl-convert)
   report/    context, kinds, render
   cli.clj
 notebooks/   engineering/, management/, explore/, _template_*
-resources/   sql/ (migrations), fixtures/trivy/, logback.xml
+resources/   sql/ (migrations), fixtures/{trivy,vex}/, logback.xml
 docs/        specs/, adr/, notebook-guide.md, schema.md
 ```
 
@@ -162,10 +162,66 @@ See [`docs/notebook-guide.md`](docs/notebook-guide.md). The rule that matters
 most: use `k/chart` and `k/table`, never `kind/plotly` directly — an
 interactive chart is *silently dropped* from pptx and PDF output.
 
+## Enrichment
+
+`bb enrich` fills the exploitability axis, which is what turns a severity list
+into a priority list — an EPSS-`likely` HIGH outranks a theoretical CRITICAL.
+
+Three sources, each the one that owns its signal:
+
+| signal | source | shape |
+|---|---|---|
+| Known exploited | CISA KEV catalogue | one bulk fetch |
+| EPSS score and percentile | FIRST | batched, 100 CVEs per request |
+| Description, sighting counts | CIRCL Vulnerability-Lookup | per id, rate-limited |
+
+Only stale entries are fetched: `--max-age 7d` skips anything refreshed inside
+the window. The cache *is* the `vulnerability` table, so there is no second
+store to keep in sync, and every report's appendix states the cache age.
+
+```bash
+bb enrich --max-age 7d          # refresh what is stale
+bb enrich --status              # coverage and age, fetch nothing
+bb enrich --offline             # make no requests at all
+bb enrich --sightings           # also fetch CIRCL sighting counts (slower)
+```
+
+CIRCL rate-limits unauthenticated callers to 20 requests per window, so
+descriptions may come back partial on a large store — the run backs off and
+says so rather than stalling. Set `CIRCL_API_ORG` / `_USER` / `_KEY` to raise
+the limit. KEV and EPSS are bulk and complete regardless, so the
+exploitability axis does not depend on CIRCL being reachable.
+
+**Nothing ever fails because an API is down.** Providers degrade to returning
+nothing, `--offline` makes no request at all, and reports render from whatever
+is cached, stamped with its age.
+
+## Decisions (OpenVEX)
+
+A decision is a human statement about a finding — *not affected, here is why,
+expires then*. They live in OpenVEX so the same statements can be handed back
+to the scanner:
+
+```bash
+bb decisions import security/vex.json
+bb decisions list
+bb decisions export vex.json
+trivy image --vex vex.json registry/app:1.2.3
+```
+
+That last line is the point, and it is verified rather than assumed: our
+exported document suppresses the findings it covers when Trivy re-scans. See
+[ADR 0007](docs/adr/0007-vex-product-addressing.md) for why addressing
+products correctly turned out to be the hard part.
+
+Expiry is honoured at analysis time, so a time-boxed exception stops applying
+on its own.
+
 ## Configuration
 
-CLI flags > environment (`VULCAN_DB`, `VULCAN_SCOPE`, `VULCAN_PROFILE`) >
-`vulcan.edn` > defaults. The store defaults to `data/vulcan.duckdb`.
+CLI flags > environment (`VULCAN_DB`, `VULCAN_SCOPE`, `VULCAN_PROFILE`,
+`CIRCL_API_ORG` / `_USER` / `_KEY`) > `vulcan.edn` > defaults. The store
+defaults to `data/vulcan.duckdb`.
 
 ## Tests
 
@@ -173,7 +229,13 @@ CLI flags > environment (`VULCAN_DB`, `VULCAN_SCOPE`, `VULCAN_PROFILE`) >
 bb test
 ```
 
-102 tests. Property tests cover the score (monotonicity in every input; a KEV
-CRITICAL fixable finding outranks anything without KEV). Ingestion
-idempotency, the layering rule, chart rendering to both targets, and the
-colour ramp's greyscale legibility are all enforced rather than assumed.
+143 tests, 557 assertions. Property tests cover the score (monotonicity in
+every input; a KEV CRITICAL fixable finding outranks anything without KEV).
+Ingestion idempotency, the layering rule, chart rendering to both targets, the
+colour ramp's greyscale legibility, and the OpenVEX round trip are all
+enforced rather than assumed.
+
+**No test touches the network.** Enrichment providers are mocked through the
+one-method `Enricher` protocol, and the parsers are tested against captured
+payloads — a suite whose result depends on a public API being up is not a
+suite.

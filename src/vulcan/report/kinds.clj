@@ -133,11 +133,16 @@
 (defn when-profile
   "Emit `content` only for the given profiles (spec section 10.1 rule 4).
 
+  Returns an empty fragment rather than nil when the profile does not match:
+  Clay renders a form's value, and a nil renders as the literal text `nil` in
+  the middle of the report.
+
   Use sparingly. A notebook that needs many of these is two notebooks wearing
   a trench coat."
   [ctx profiles content]
-  (when (contains? (set profiles) (profile ctx))
-    content))
+  (if (contains? (set profiles) (profile ctx))
+    content
+    (kind/fragment [])))
 
 (defn pct [x] (when x (format "%.1f%%" (double x))))
 
@@ -153,11 +158,22 @@
 (defn- format-instant [t]
   (when t (str t)))
 
-(defn- cache-line [{:keys [n-enriched n-total newest]}]
+(defn- cache-line
+  "How much of the store's enrichment is present, and how old it is.
+
+  Reported per signal rather than as one number: EPSS and KEV come from bulk
+  feeds and are usually complete, while CIRCL descriptions are rate-limited
+  and often partial. A single combined count would understate the coverage
+  that actually drives the exploitability axis."
+  [{:keys [n-enriched n-total newest n-with-epss n-kev]}]
   (if (zero? (or n-total 0))
-    "No enrichment data: EPSS, KEV and sightings were unavailable, so every finding is categorised `unlikely` on the exploitability axis."
-    (format "%d of %d vulnerabilities enriched; newest enrichment %s."
-            n-enriched n-total (or (format-instant newest) "unknown"))))
+    (str "No enrichment data: EPSS, KEV and sightings were unavailable, so "
+         "every finding is categorised `unlikely` on the exploitability axis.")
+    (str (format "%d vulnerabilities in scope. " n-total)
+         (when n-with-epss (format "EPSS: %d. " n-with-epss))
+         (when n-kev (format "Known-exploited (KEV): %d. " n-kev))
+         (format "Descriptions: %d. " (or n-enriched 0))
+         (format "Newest enrichment %s." (or (format-instant newest) "unknown")))))
 
 (defn appendix
   "The data-provenance section every notebook ends with (spec section 10.1

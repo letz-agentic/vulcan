@@ -160,8 +160,13 @@
 (deftest when-profile-gates-content
   (ts/with-store [conn]
     (let [ctx (ts/context conn)]
-      (is (some? (k/when-profile ctx #{:html} :shown)))
-      (is (nil? (k/when-profile ctx #{:pptx} :hidden))))))
+      (is (= :shown (k/when-profile ctx #{:html} :shown)))
+      (testing "a non-matching profile yields an empty fragment, not nil"
+        ;; Clay renders a form's value, so returning nil puts the literal
+        ;; text "nil" in the middle of the report.
+        (let [hidden (k/when-profile ctx #{:pptx} :hidden)]
+          (is (not= :hidden hidden))
+          (is (empty? (vec hidden))))))))
 
 (deftest appendix-carries-provenance
   (ts/with-store [conn]

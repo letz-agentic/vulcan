@@ -180,9 +180,12 @@
              ["SELECT min(circl_fetched_at) AS oldest,
                       max(circl_fetched_at) AS newest,
                       count(circl_fetched_at) AS n_enriched,
+                      count(epss_score) AS n_with_epss,
+                      count(*) FILTER (kev) AS n_kev,
                       count(*) AS n_total
                  FROM vulnerability"])]
-    (or row {:oldest nil :newest nil :n-enriched 0 :n-total 0})))
+    (or row {:oldest nil :newest nil :n-enriched 0 :n-total 0
+             :n-with-epss 0 :n-kev 0})))
 
 ;; ---------------------------------------------------------------------------
 ;; escape hatch (spec section 6.4)

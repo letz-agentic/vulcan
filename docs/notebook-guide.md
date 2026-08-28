@@ -97,6 +97,17 @@ Say so rather than showing an empty chart with confident prose above it:
 | `:diff`       | change vs each artifact's previous scan                     |
 | `:trend`      | per-scan severity counts over **all** scans, long format    |
 
+Findings carry enrichment (`:epss-score`, `:epss-percentile`, `:kev`,
+`:sightings-count`, `:description`) and any active decision
+(`:decision-status`, `:decision-justification`) as ordinary columns, because
+`v_finding_enriched` has already joined them. A notebook never needs to know
+that enrichment came from three different APIs.
+
+If the store has not been enriched, every finding categorises as `unlikely` on
+the exploitability axis. That is a real statement about what is known, and the
+appendix reports the cache coverage so a reader can see it — but prose that
+leans on exploitability should say so, as `engineering/fix_first` does.
+
 ## Rendering
 
 ```

@@ -9,6 +9,8 @@
             [clojure.pprint :as pp]
             [clojure.string :as str]
             [clojure.tools.cli :as cli]
+            [vulcan.enrich.cache :as enrich]
+            [vulcan.enrich.vex :as vex]
             [vulcan.ingest.dir :as ingest]
             [vulcan.report.context :as ctx]
             [vulcan.report.render :as render]
@@ -26,6 +28,17 @@
 (def ingest-options
   (into common-options
         [[nil "--dry-run" "Parse and validate only; write nothing"]]))
+
+(def enrich-options
+  (into common-options
+        [[nil "--max-age DURATION" "Only refresh entries older than this (e.g. 7d, 12h)"
+          :default "7d"]
+         [nil "--concurrency N" "Requests in flight (default 4)"
+          :default 4 :parse-fn parse-long]
+         [nil "--sightings" "Also fetch CIRCL sighting counts (one extra request per id)"]
+         [nil "--offline" "Make no requests; report what would be refreshed"]
+         [nil "--limit N" "Enrich at most N vulnerabilities" :parse-fn parse-long]
+         [nil "--status" "Print cache coverage and age, then exit"]]))
 
 (def render-options
   (into common-options
@@ -122,13 +135,64 @@
 
 ;; ---------------------------------------------------------------------------
 
+(defn cmd-enrich
+  "Refresh EPSS, KEV and CIRCL data for vulnerabilities in the store."
+  [args]
+  (let [{:keys [options]} (cli/parse-opts args enrich-options)
+        conn (open-store options)]
+    (if (:status options)
+      (do (pp/pprint (enrich/status conn)) 0)
+      (let [{:keys [requested written offline? providers]}
+            (enrich/enrich! conn {:max-age     (:max-age options)
+                                  :concurrency (:concurrency options)
+                                  :sightings?  (:sightings options)
+                                  :offline?    (:offline options)
+                                  :limit       (:limit options)})]
+        (if offline?
+          (report-line (format "enrich: offline, %d stale (nothing fetched)" requested))
+          (report-line (format "enrich: %d requested, %d written, via %s"
+                               requested written (str/join ", " providers))))
+        0))))
+
+(defn cmd-decisions
+  "Import or export OpenVEX decisions (spec section 7.3).
+
+    decisions import vex.json
+    decisions export [file]
+    decisions list"
+  [args]
+  (let [[sub & rest-args] args
+        {:keys [options arguments]} (cli/parse-opts rest-args common-options)
+        conn (open-store options)]
+    (case sub
+      "import"
+      (if-let [file (first arguments)]
+        (let [{:keys [statements decisions]} (vex/import! conn file)]
+          (report-line (format "imported %d decisions from %d statements"
+                               decisions statements))
+          0)
+        (do (report-line "usage: decisions import <vex.json>") 1))
+
+      "export"
+      (let [file (or (first arguments) "vex.json")
+            {:keys [decisions]} (vex/export! conn file)]
+        (report-line (format "exported %d decisions to %s" decisions file))
+        0)
+
+      "list"
+      (do (pp/pprint (vex/summary conn)) 0)
+
+      (do (report-line "usage: decisions <import|export|list> [file]") 1))))
+
 (def tasks
-  {"migrate" #'cmd-migrate
-   "ingest"  #'cmd-ingest
-   "check"   #'cmd-check
-   "render"  #'cmd-render
-   "report"  #'cmd-report
-   "summary" #'cmd-summary})
+  {"migrate"   #'cmd-migrate
+   "ingest"    #'cmd-ingest
+   "enrich"    #'cmd-enrich
+   "decisions" #'cmd-decisions
+   "check"     #'cmd-check
+   "render"    #'cmd-render
+   "report"    #'cmd-report
+   "summary"   #'cmd-summary})
 
 (defn usage []
   (str "vulcan <task> [options]\n\ntasks:\n"

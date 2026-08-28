@@ -1,0 +1,32 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://openvex.dev/docs/example/vulcan-fixture",
+  "author": "security@example.com",
+  "timestamp": "2026-08-01T09:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": { "name": "CVE-2026-40200" },
+      "products": [
+        { "@id": "pkg:apk/alpine/musl@1.2.4_git20230717-r5?arch=x86_64&distro=3.19.9" }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "The affected code path is not reachable in our configuration.",
+      "timestamp": "2026-08-01T09:00:00Z"
+    },
+    {
+      "vulnerability": { "name": "CVE-2026-22184" },
+      "products": [{ "@id": "node:18-alpine" }],
+      "status": "under_investigation",
+      "timestamp": "2026-08-02T11:30:00Z",
+      "expires": "2026-09-30T00:00:00Z"
+    },
+    {
+      "vulnerability": { "name": "CVE-2026-31789" },
+      "status": "affected",
+      "action_statement": "Scheduled for the next base-image refresh.",
+      "timestamp": "2026-08-03T14:00:00Z"
+    }
+  ]
+}

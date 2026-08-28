@@ -9,8 +9,7 @@
             [next.jdbc :as jdbc]
             [next.jdbc.prepare :as prep]
             [vulcan.store.db :as db])
-  (:import (java.sql Connection PreparedStatement)
-           (java.time Instant)))
+  (:import (java.sql Connection PreparedStatement)))
 
 (def ^:private table-columns
   "Column order per table. Explicit rather than derived from the row maps, so
@@ -54,15 +53,17 @@
 (defn- bind-value
   "Coerce a Clojure value into something the DuckDB driver accepts.
 
+  Only arrays need handling here: they are the one case that needs a live
+  Connection to build. `java.time` values are bound by the `SettableParameter`
+  extension in `vulcan.store.db`, which covers queries as well as inserts.
+
   This is the only place a row map stops being pure data: array columns arrive
-  as Clojure vectors (so that rows stay comparable and EDN-serialisable) and
-  become JDBC arrays here."
+  as Clojure vectors, so rows stay comparable and EDN-serialisable, and become
+  JDBC arrays at the last moment."
   [^Connection conn col v]
-  (cond
-    (nil? v)              nil
-    (array-columns col)   (.createArrayOf conn "VARCHAR" (into-array String (map str v)))
-    (instance? Instant v) (java.sql.Timestamp/from ^Instant v)
-    :else                 v))
+  (if (and (some? v) (array-columns col))
+    (.createArrayOf conn "VARCHAR" (into-array String (map str v)))
+    v))
 
 (defn insert-batch!
   "Insert `rows` into `table` in one prepared batch. Returns the number of rows
@@ -94,6 +95,72 @@
                ["INSERT INTO ingest_log (scan_id, source_file, ingested_at, outcome, message)
                  VALUES (?, ?, now(), ?, ?)"
                 scan-id source-file (name outcome) message]))
+
+;; ---------------------------------------------------------------------------
+;; enrichment and decisions (spec sections 7.2, 7.3)
+;;
+;; These upsert rather than `DO NOTHING`. The findings tables are append-only
+;; because a scan is a historical fact; enrichment is the opposite -- a
+;; refreshed EPSS score is meant to replace the stale one, and that is the
+;; whole point of `--max-age`.
+
+(def ^:private vulnerability-columns
+  [:vulnerability_id :description :epss_score :epss_percentile :epss_date
+   :kev :kev_date_added :kev_ransomware :sightings_count
+   :circl_fetched_at :circl_raw])
+
+(def ^:private decision-columns
+  [:decision_id :vulnerability_id :scope :status :justification :note
+   :decided_by :decided_at :expires_at :source])
+
+(defn- upsert-sql
+  "`INSERT ... ON CONFLICT (pk) DO UPDATE`, updating only the columns this row
+  actually carries a value for.
+
+  `COALESCE(excluded.c, table.c)` is what makes partial enrichment safe: a run
+  that fetched KEV but could not reach CIRCL must refresh `kev` without
+  blanking the description it already had."
+  [table pk cols]
+  (format "INSERT INTO %s (%s) VALUES (%s)
+           ON CONFLICT (%s) DO UPDATE SET %s"
+          (name table)
+          (str/join ", " (map name cols))
+          (str/join ", " (map placeholder cols))
+          (name pk)
+          (str/join ", " (for [c cols :when (not= c pk)]
+                           (format "%s = COALESCE(excluded.%s, %s.%s)"
+                                   (name c) (name c) (name table) (name c))))))
+
+(defn- upsert-batch!
+  [connectable table pk cols rows]
+  (if (empty? rows)
+    0
+    (let [sql (upsert-sql table pk cols)]
+      (db/with-connection [conn connectable]
+        (with-open [^PreparedStatement ps (.prepareStatement ^Connection conn sql)]
+          (doseq [row rows]
+            (prep/set-parameters ps (mapv #(bind-value conn % (get row %)) cols))
+            (.addBatch ps))
+          (.executeBatch ps)))
+      (count rows))))
+
+(defn- kebab->snake
+  "Providers and the VEX importer speak kebab-case, the columns are snake_case."
+  [row]
+  (into {} (map (fn [[k v]] [(keyword (str/replace (name k) "-" "_")) v])) row))
+
+(defn upsert-vulnerabilities!
+  "Write enrichment rows, refreshing what is present and preserving what is
+  not. Accepts kebab-case keys, as the providers produce them."
+  [connectable rows]
+  (upsert-batch! connectable :vulnerability :vulnerability_id
+                 vulnerability-columns (map kebab->snake rows)))
+
+(defn upsert-decisions!
+  "Write VEX-derived decisions (spec section 7.3)."
+  [connectable rows]
+  (upsert-batch! connectable :decision :decision_id
+                 decision-columns (map kebab->snake rows)))
 
 (defn write-rows!
   "Persist one normalised report in a single transaction (spec section 6.2).

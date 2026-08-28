@@ -40,6 +40,12 @@
   summary    {:doc  "Print the KPI summary for the current scope"
               :task (apply vulcan "summary" *command-line-args*)}
 
+  enrich     {:doc  "Refresh EPSS/KEV/CIRCL data: bb enrich --max-age 7d [--offline]"
+              :task (apply vulcan "enrich" *command-line-args*)}
+
+  decisions  {:doc  "OpenVEX decisions: bb decisions import vex.json | export | list"
+              :task (apply vulcan "decisions" *command-line-args*)}
+
   render     {:doc  "Render a notebook: bb render management/posture --profile revealjs"
               :task (apply vulcan "render" *command-line-args*)}
 
