@@ -267,6 +267,22 @@
     (is (nil? (http/retry-after-ms {"x-ratelimit-reset" "1"}))))
   (is (nil? (http/retry-after-ms {}))))
 
+(deftest circl-credentials-use-the-header-the-instance-reads
+  (testing "the instance buckets on X-API-KEY; the spec's CVE-API-* headers
+            are ignored, so sending those is the same as sending nothing"
+    (with-redefs [http/circl-headers
+                  (fn [] (into {} (remove (comp nil? val))
+                               {"X-API-KEY" "secret"}))]
+      (is (= {"X-API-KEY" "secret"} (http/circl-headers))))
+    (testing "and no header at all when the environment is unset"
+      (is (not (contains? (http/circl-headers) "CVE-API-KEY"))))))
+
+(deftest user-agent-identifies-the-client
+  (testing "the policy asks for a contact URL or email; an unidentified
+            client is rate-limited or blocked first"
+    (is (re-find #"vulcan-v/" http/user-agent))
+    (is (re-find #"\+https?://" http/user-agent))))
+
 (deftest rate-limited-recognises-429-and-5xx-but-not-404
   (is (http/rate-limited? {:status 429}))
   (is (http/rate-limited? {:status 503}))

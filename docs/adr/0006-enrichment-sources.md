@@ -40,10 +40,46 @@ the upstream CVE 5.0 record rather than a CIRCL-shaped one. The sightings
 count is read from `metadata.count`, **not** `(count data)`: a page holds at
 most 1000, and CVE-2021-44228 has 1780.
 
-## Rate limiting, and why it needed a circuit breaker
+## Rate limiting: what the instance actually publishes
 
-CIRCL allows 20 requests per window unauthenticated and answers a 429 with
-`Retry-After: 30` and `x-ratelimit-reset`.
+Every Vulnerability-Lookup instance serves a machine-readable policy at
+`/.well-known/api-policy.json`. For `vulnerability.circl.lu` it reports:
+
+```json
+"rate_limits": {
+  "enforced": true,
+  "key": "X-API-KEY when present (per-key bucket); IP address otherwise.",
+  "limits": { "anonymous": "20 per minute", "authenticated": "40 per minute" }
+}
+```
+
+Three consequences, all of which contradict something we had written down:
+
+1. **The auth header is `X-API-KEY`.** The spec named `CVE-API-ORG` /
+   `CVE-API-USER` / `CVE-API-KEY`, and the first implementation sent those.
+   The instance ignores them, so credential support was inert: setting the
+   environment variables changed nothing. Now `CIRCL_API_KEY` is sent as
+   `X-API-KEY`.
+
+2. **A key doubles the budget, 20/min → 40/min, and does not remove it.** It
+   also buckets by key instead of by IP, so a shared corporate egress address
+   is not punished for another client's traffic. Worth having; not a fix.
+
+3. **The prose documentation is stale.** `access-patterns.html` states that
+   both limit settings "default to `None` — meaning no enforced limit" and
+   that this is "the posture of the public CIRCL instance today". The live
+   policy says `"enforced": true`, and the observed headers agree
+   (`x-ratelimit-limit: 20`). The machine-readable document is the one to
+   trust, and it is the one to re-check.
+
+The policy also asks automated clients to identify themselves with a contact
+URL, and warns that default SDK User-Agents are treated as anonymous and
+throttled or blocked first — so our User-Agent is a functional requirement,
+not a courtesy.
+
+## Why it still needed a circuit breaker
+
+CIRCL answers a 429 with `Retry-After: 30` and `x-ratelimit-reset`.
 
 Honouring `Retry-After` per request was correct and catastrophically slow: 53
 vulnerabilities × 4 attempts × 30 s at concurrency 2 turned a 60-second run
@@ -53,7 +89,17 @@ rest of the run the first time a request exhausts its retries. The measured
 run went from >600 s (killed) to **66 s**, with EPSS and KEV complete and
 descriptions partial — which is exactly the degradation §7.2 asks for.
 
-Set `CIRCL_API_ORG` / `_USER` / `_KEY` to raise the limit.
+Set `CIRCL_API_KEY` to double the limit. Note that even at 40/min a store
+with hundreds of vulnerabilities will not get every description in one run;
+the breaker makes that outcome fast instead of slow, and the next run picks up
+where this one stopped because freshness keys on `circl_fetched_at`.
+
+Two routes exist for anyone who needs descriptions in bulk and does not want
+to be throttled at all: the instance publishes dumps at
+`https://vulnerability.circl.lu/dumps/`, and the canonical sync path for a
+mirror is `/api/vulnerability/?since=YYYY-MM-DD` plus the pub/sub stream.
+Neither is implemented — our access pattern is targeted lookups of the CVEs a
+scan actually found, which is what the guidance recommends for that case.
 
 ## Consequences
 

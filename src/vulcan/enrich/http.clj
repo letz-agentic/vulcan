@@ -15,8 +15,13 @@
             [vulcan.ingest.json :as vj]))
 
 (def user-agent
-  "Identifying ourselves is basic manners to a free public API, and it is what
-  lets an operator find us in their logs if we misbehave."
+  "Identify the client with a contact URL, which is what the instance policy
+  asks for: a meaningful User-Agent including a contact URL or email.
+
+  This is not politeness for its own sake. The access-patterns guidance says
+  default SDK User-Agents such as python-requests or Go-http-client are
+  treated as anonymous and may be rate-limited or blocked first, so an
+  unidentified client is one that gets throttled sooner."
   "vulcan-v/0.1 (+https://github.com/letz-agentic/vulcan)")
 
 (def ^:dynamic *offline*
@@ -26,15 +31,24 @@
 (def default-timeout-ms 20000)
 
 (defn circl-headers
-  "Optional CIRCL Vulnerability-Lookup credentials, from the environment
-  (spec section 11's `CIRCL_API_*`). The read endpoints we use do not require
-  them; they raise the rate limit when present."
+  "Optional CIRCL Vulnerability-Lookup credentials from `CIRCL_API_KEY`.
+
+  The header is `X-API-KEY`. The spec (section 7.1) named CVE-API-ORG,
+  CVE-API-USER and CVE-API-KEY, which this instance ignores -- sending those
+  is indistinguishable from sending nothing at all. The authoritative
+  statement is the instance own machine-readable policy at
+  `/.well-known/api-policy.json`, which reports that the rate-limit bucket key
+  is X-API-KEY when present and the client IP otherwise, with limits of 20
+  requests per minute anonymous and 40 authenticated.
+
+  So a key is worth having -- it doubles the budget, and buckets by key rather
+  than by IP, so a shared egress address is not punished for someone else
+  traffic -- but it does not remove the limit, and the circuit breaker in
+  `vulcan.enrich.provider` is still what keeps a large run honest."
   []
   (into {}
         (remove (comp nil? val))
-        {"CVE-API-ORG"  (System/getenv "CIRCL_API_ORG")
-         "CVE-API-USER" (System/getenv "CIRCL_API_USER")
-         "CVE-API-KEY"  (System/getenv "CIRCL_API_KEY")}))
+        {"X-API-KEY" (System/getenv "CIRCL_API_KEY")}))
 
 (defn rate-limited?
   "429, or a 5xx worth another attempt. A 404 is an answer, not a failure."

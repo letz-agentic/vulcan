@@ -186,11 +186,23 @@ bb enrich --offline             # make no requests at all
 bb enrich --sightings           # also fetch CIRCL sighting counts (slower)
 ```
 
-CIRCL rate-limits unauthenticated callers to 20 requests per window, so
-descriptions may come back partial on a large store — the run backs off and
-says so rather than stalling. Set `CIRCL_API_ORG` / `_USER` / `_KEY` to raise
-the limit. KEV and EPSS are bulk and complete regardless, so the
-exploitability axis does not depend on CIRCL being reachable.
+CIRCL enforces **20 requests/minute anonymous, 40 with an API key** (its own
+policy at `/.well-known/api-policy.json` is authoritative here — the prose
+docs are out of date and still claim no limit is enforced). Descriptions may
+therefore come back partial on a large store; the run backs off and says so
+rather than stalling, and the next run resumes where it stopped.
+
+To double the budget, [create an account](https://vulnerability.circl.lu/user/signup)
+on the instance, take the API key from your profile, and:
+
+```bash
+export CIRCL_API_KEY=...      # sent as the X-API-KEY header
+```
+
+A key is worth having but is not a fix: it doubles the limit rather than
+removing it, and buckets you by key instead of by shared egress IP. KEV and
+EPSS are bulk feeds and complete regardless, so the exploitability axis never
+depends on CIRCL being reachable — only descriptions do.
 
 **Nothing ever fails because an API is down.** Providers degrade to returning
 nothing, `--offline` makes no request at all, and reports render from whatever
@@ -220,8 +232,8 @@ on its own.
 ## Configuration
 
 CLI flags > environment (`VULCAN_DB`, `VULCAN_SCOPE`, `VULCAN_PROFILE`,
-`CIRCL_API_ORG` / `_USER` / `_KEY`) > `vulcan.edn` > defaults. The store
-defaults to `data/vulcan.duckdb`.
+`CIRCL_API_KEY`) > `vulcan.edn` > defaults. The store defaults to
+`data/vulcan.duckdb`.
 
 ## Tests
 

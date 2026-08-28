@@ -23,12 +23,15 @@
 (def base-url "https://vulnerability.circl.lu")
 
 (def default-concurrency
-  "CIRCL allows 20 requests per window to an unauthenticated caller, and
-  answers a 429 with `Retry-After: 30`. Two in flight keeps a normal run
-  inside that budget; the bulk KEV and EPSS providers carry the load that
-  actually matters, so there is nothing to gain by pushing harder here.
+  "The instance's published limit is 20 requests per minute anonymous, 40 with
+  an `X-API-KEY` (`/.well-known/api-policy.json`). Two in flight keeps a
+  normal run near that budget; the bulk KEV and EPSS providers carry the load
+  that actually matters, so there is nothing to gain by pushing harder.
 
-  Set `CIRCL_API_ORG`/`_USER`/`_KEY` for a higher limit (spec section 11)."
+  Set `CIRCL_API_KEY` to double the budget and to be bucketed by key rather
+  than by IP. Even then the limit is a limit: on a store with hundreds of
+  vulnerabilities, descriptions will still come back partial on a single run,
+  and the circuit breaker is what makes that fast rather than slow."
   2)
 
 (defn vulnerability-url [id] (str base-url "/api/vulnerability/" id))
