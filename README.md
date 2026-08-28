@@ -193,16 +193,28 @@ therefore come back partial on a large store; the run backs off and says so
 rather than stalling, and the next run resumes where it stopped.
 
 To double the budget, [create an account](https://vulnerability.circl.lu/user/signup)
-on the instance, take the API key from your profile, and:
+on the instance and put the API key from your profile in a **gitignored**
+`.env` at the repo root:
 
-```bash
-export CIRCL_API_KEY=...      # sent as the X-API-KEY header
+```
+CIRCL_API_KEY=your-key-here
 ```
 
-A key is worth having but is not a fix: it doubles the limit rather than
-removing it, and buckets you by key instead of by shared egress IP. KEV and
-EPSS are bulk feeds and complete regardless, so the exploitability axis never
-depends on CIRCL being reachable — only descriptions do.
+`bb` loads `.env` into the task environment and the client sends it as the
+`X-API-KEY` header. Never commit it — the remote is an org repo, and `.env`
+is in `.gitignore` for that reason.
+
+Measured on the fixture store (53 vulnerabilities, from cold):
+
+| | descriptions | outcome |
+|---|---|---|
+| anonymous (20/min) | 20 / 53 | circuit breaker trips, run degrades |
+| with a key (40/min) | **53 / 53** | completes, one back-off pause |
+
+A key is not a fix — it doubles the limit rather than removing it — but on a
+store this size it is the difference between partial and complete. KEV and
+EPSS are bulk feeds and complete either way, so the exploitability axis never
+depends on CIRCL being reachable; only descriptions do.
 
 **Nothing ever fails because an API is down.** Providers degrade to returning
 nothing, `--offline` makes no request at all, and reports render from whatever

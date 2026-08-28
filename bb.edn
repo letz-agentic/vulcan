@@ -18,12 +18,34 @@
     (def tools-bin (str (fs/absolutize "tools/bin")))
     (def jvm-opts ["-J--enable-native-access=ALL-UNNAMED"])
 
+    (defn dotenv
+      "Read `.env` into a map, if it exists.
+
+      Secrets stay out of the repo and out of the process table: `.env` is
+      gitignored, and the values are handed to the child through its
+      environment rather than interpolated into a command line, where they
+      would be visible to `ps` for every user on the machine."
+      []
+      (if (fs/exists? ".env")
+        (into {}
+              (for [line (str/split-lines (slurp ".env"))
+                    :let  [line (str/trim line)]
+                    :when (and (seq line)
+                               (not (str/starts-with? line "#"))
+                               (str/includes? line "="))
+                    ;; bb.edn is EDN: regex literals are not readable here.
+                    :let  [[k v] (str/split line (re-pattern "=") 2)]]
+                [(str/trim k) (str/trim v)]))
+        {}))
+
     (defn vulcan
-      "Run a vulcan.cli task in a JVM with the pinned tools on PATH."
+      "Run a vulcan.cli task in a JVM with the pinned tools on PATH and any
+      local secrets from `.env` in the environment."
       [& args]
       (let [{:keys [exit]}
             (babashka.process/shell
-             {:extra-env {"PATH" (str tools-bin ":" (System/getenv "PATH"))}
+             {:extra-env (merge (dotenv)
+                                {"PATH" (str tools-bin ":" (System/getenv "PATH"))})
               :continue  true}
              (str/join " " (concat ["clojure"] jvm-opts ["-M:cli"] (map str args))))]
         (when-not (zero? exit) (System/exit exit)))))

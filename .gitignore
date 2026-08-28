@@ -8,3 +8,7 @@
 .DS_Store
 *.duckdb
 *.duckdb.wal
+
+# Local secrets. Never committed: the remote is a GitHub org repo.
+.env
+.env.*

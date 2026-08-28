@@ -105,7 +105,12 @@
                         (if-let [e (:error result)]
                           (str ": " (.getMessage ^Exception e))
                           (str " (last status " (:status value) ")")))
-            fallback)
+            ;; Return the last thing we actually saw, not a blank fallback:
+            ;; the caller needs the status to tell "rate-limited" from
+            ;; "unreachable", and a fallback that erases it turns an accurate
+            ;; diagnostic into a misleading one. `fallback` is for the case
+            ;; where every attempt threw and there is no value to report.
+            (or value fallback))
 
         :else
         (let [asked (:retry-after-ms value)

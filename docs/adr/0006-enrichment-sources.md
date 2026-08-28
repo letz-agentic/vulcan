@@ -89,7 +89,10 @@ rest of the run the first time a request exhausts its retries. The measured
 run went from >600 s (killed) to **66 s**, with EPSS and KEV complete and
 descriptions partial — which is exactly the degradation §7.2 asks for.
 
-Set `CIRCL_API_KEY` to double the limit. Note that even at 40/min a store
+Set `CIRCL_API_KEY` (via a gitignored `.env`, which `bb` loads) to double the
+limit. Measured on the 53-vulnerability fixture store from cold: anonymous
+yields 20/53 descriptions and trips the breaker; authenticated yields **53/53**
+and completes with a single back-off pause. Note that even at 40/min a store
 with hundreds of vulnerabilities will not get every description in one run;
 the breaker makes that outcome fast instead of slow, and the next run picks up
 where this one stopped because freshness keys on `circl_fetched_at`.

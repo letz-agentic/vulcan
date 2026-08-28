@@ -296,14 +296,35 @@
     (is (= {:status 404} res))
     (is (= 1 @calls) "a 404 is an answer, not a failure to retry")))
 
-(deftest with-retries-gives-up-with-a-fallback
-  (let [calls (atom 0)
-        res   (p/with-retries {:attempts 3 :base-delay-ms 1
-                               :retryable? http/rate-limited?
-                               :fallback :gave-up}
-                              (fn [] (swap! calls inc) {:status 429}))]
-    (is (= :gave-up res))
-    (is (= 3 @calls))))
+(deftest with-retries-gives-up-but-keeps-the-last-status
+  (testing "the caller has to tell rate-limited from unreachable, so giving up
+            must not erase the status we actually saw"
+    (let [calls (atom 0)
+          res   (p/with-retries {:attempts 3 :base-delay-ms 1
+                                 :retryable? http/rate-limited?
+                                 :fallback {:status nil}}
+                                (fn [] (swap! calls inc) {:status 429}))]
+      (is (= 429 (:status res)))
+      (is (= 3 @calls))))
+
+  (testing "and falls back only when every attempt threw"
+    (is (= :gave-up
+           (p/with-retries {:attempts 2 :base-delay-ms 1 :fallback :gave-up}
+                           (fn [] (throw (ex-info "boom" {}))))))))
+
+(deftest circl-distinguishes-rate-limited-from-unreachable
+  (testing "the message a partial run prints has to name the real cause"
+    (let [msgs (atom [])]
+      (with-redefs [circl/fetch-record (fn [_] {:status 429 :body nil})
+                    p/trip! (fn [_ reason] (swap! msgs conj reason))]
+        (p/enrich (circl/provider {:concurrency 1}) ["CVE-1"]))
+      (is (re-find #"rate-limiting" (first @msgs))))
+
+    (let [msgs (atom [])]
+      (with-redefs [circl/fetch-record (fn [_] {:status nil :body nil})
+                    p/trip! (fn [_ reason] (swap! msgs conj reason))]
+        (p/enrich (circl/provider {:concurrency 1}) ["CVE-1"]))
+      (is (re-find #"not responding" (first @msgs))))))
 
 (deftest breaker-trips-once-and-stays-tripped
   (let [b (p/breaker)]
