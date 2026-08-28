@@ -1,0 +1,10 @@
+/data/
+/target/
+/tools/
+.cpcache/
+.clj-kondo/.cache/
+.lsp/.cache/
+.nrepl-port
+.DS_Store
+*.duckdb
+*.duckdb.wal

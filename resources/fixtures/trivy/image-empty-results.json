@@ -1,0 +1,53 @@
+{
+  "SchemaVersion" : 2,
+  "Results" : [ ],
+  "CreatedAt" : "2026-08-28T08:11:44.986144+02:00",
+  "ArtifactName" : "registry.example/clean-app:1.0.0",
+  "Metadata" : {
+    "RepoDigests" : [ "alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce" ],
+    "DiffIDs" : [ "sha256:6f09edfb3f6d7173733adc8eec8ea00626550dc6fc2dcf07d40e13f5c1e907c4" ],
+    "Size" : 8575488,
+    "OS" : {
+      "Family" : "alpine",
+      "Name" : "3.22.5"
+    },
+    "ImageID" : "sha256:b66e0ce64844f5c6435b0c4bfd965558199ab0f53270846861c979cb1ac29365",
+    "Layers" : [ {
+      "Size" : 8575488,
+      "Digest" : "sha256:f7ee36c9aa34bbb665f975c76e5c0d1607f0674b94c84cfb0061f87006ea5d10",
+      "DiffID" : "sha256:6f09edfb3f6d7173733adc8eec8ea00626550dc6fc2dcf07d40e13f5c1e907c4"
+    } ],
+    "ImageConfig" : {
+      "architecture" : "amd64",
+      "config" : {
+        "Env" : [ "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" ],
+        "WorkingDir" : "/",
+        "Cmd" : [ "/bin/sh" ]
+      },
+      "history" : [ {
+        "created" : "2026-06-22T19:20:21.712285437Z",
+        "comment" : "buildkit.dockerfile.v0",
+        "created_by" : "ADD alpine-minirootfs-3.22.5-x86_64.tar.gz / # buildkit"
+      }, {
+        "empty_layer" : true,
+        "created" : "2026-06-22T19:20:21.712285437Z",
+        "comment" : "buildkit.dockerfile.v0",
+        "created_by" : "CMD [\"/bin/sh\"]"
+      } ],
+      "created" : "2026-06-22T19:20:21.712285437Z",
+      "os" : "linux",
+      "rootfs" : {
+        "type" : "layers",
+        "diff_ids" : [ "sha256:6f09edfb3f6d7173733adc8eec8ea00626550dc6fc2dcf07d40e13f5c1e907c4" ]
+      }
+    },
+    "RepoTags" : [ "alpine:3.22" ],
+    "Reference" : "alpine:3.22"
+  },
+  "ReportID" : "01a046fe-e4da-7232-8439-e47ff4a6b77f",
+  "Trivy" : {
+    "Version" : "0.74.0"
+  },
+  "ArtifactType" : "container_image",
+  "ArtifactID" : "sha256:88c13507fcd011362ccd457c456a990731c279d19bbf61f5a79e24dd49065384"
+}

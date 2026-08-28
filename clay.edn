@@ -1,0 +1,11 @@
+;; Shared Clay defaults (spec section 10.3). Per-profile settings live in
+;; `vulcan.report.render/profiles`, because Clay writes its `:quarto :format`
+;; map verbatim into the qmd front matter and each output format needs its own.
+{:base-target-path "target/reports"
+ :subdirs-to-sync  ["notebooks"]
+ :keep-sync-root   false
+ :flatten-targets  true
+ :hide-ui-header   true
+ :hide-info-line   true
+ :browse           false
+ :show             false}

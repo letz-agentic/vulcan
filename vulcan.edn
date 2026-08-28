@@ -1,0 +1,19 @@
+;; Vulcan V configuration. CLI flags > env > this file > defaults (spec §11).
+{:db      "data/vulcan.duckdb"
+ :scope   :latest
+ :profile :html
+ :top-n   20
+
+ ;; Pinned external tools (spec §9.2, §10.5). `bb check` verifies version and,
+ ;; where a checksum is pinned, the SHA-256 of the binary on disk.
+ :vl-convert {:path       "tools/bin/vl-convert"
+              :version    "1.9.0"
+              :vl-version "5.21"
+              :sha256     "9a12ff18af9abf895a5bdf22c74a5b602bcbab0714ee1a290f5f6305a6cefc74"}
+
+ ;; Quarto is a directory tree, not a single binary, so it is pinned by
+ ;; version and by the checksum of the release archive it was unpacked from
+ ;; (recorded here for the record; `bb check` verifies the version).
+ :quarto     {:path           "tools/bin/quarto"
+              :version        "1.10.18"
+              :archive-sha256 "ddd6a71a9e0448ab15fb655bc589e11cb6589a248ec35ccd7f7f44137531688e"}}

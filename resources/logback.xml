@@ -1,0 +1,17 @@
+<!-- Logging goes to stderr so that stdout carries only the one-line task
+     summaries CI reads (spec section 11). -->
+<configuration>
+  <appender name="STDERR" class="ch.qos.logback.core.ConsoleAppender">
+    <target>System.err</target>
+    <encoder>
+      <pattern>%d{HH:mm:ss.SSS} %-5level %logger{24} -- %msg%n</pattern>
+    </encoder>
+  </appender>
+
+  <root level="INFO">
+    <appender-ref ref="STDERR"/>
+  </root>
+
+  <!-- Quiet by default; the libraries below are chatty at INFO. -->
+  <logger name="org.duckdb" level="WARN"/>
+</configuration>

@@ -1,0 +1,7 @@
+#kaocha/v1
+{:tests [{:id          :unit
+          :test-paths  ["test"]
+          :source-paths ["src"]}]
+ :reporter kaocha.report/dots
+ :plugins [:kaocha.plugin/randomize]
+ :randomize? false}
