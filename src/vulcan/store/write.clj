@@ -144,23 +144,23 @@
           (.executeBatch ps)))
       (count rows))))
 
-(defn- kebab->snake
-  "Providers and the VEX importer speak kebab-case, the columns are snake_case."
+(defn- kebab->snake-row
+  "Convert a row's keys from kebab-case to snake_case, using `db/kebab->snake`."
   [row]
-  (into {} (map (fn [[k v]] [(keyword (str/replace (name k) "-" "_")) v])) row))
+  (into {} (map (fn [[k v]] [(db/kebab->snake k) v])) row))
 
 (defn upsert-vulnerabilities!
   "Write enrichment rows, refreshing what is present and preserving what is
   not. Accepts kebab-case keys, as the providers produce them."
   [connectable rows]
   (upsert-batch! connectable :vulnerability :vulnerability_id
-                 vulnerability-columns (map kebab->snake rows)))
+                 vulnerability-columns (map kebab->snake-row rows)))
 
 (defn upsert-decisions!
   "Write VEX-derived decisions (spec section 7.3)."
   [connectable rows]
   (upsert-batch! connectable :decision :decision_id
-                 decision-columns (map kebab->snake rows)))
+                 decision-columns (map kebab->snake-row rows)))
 
 (defn write-rows!
   "Persist one normalised report in a single transaction (spec section 6.2).

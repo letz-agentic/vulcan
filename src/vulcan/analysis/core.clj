@@ -8,8 +8,11 @@
   (:require [tablecloth.api :as tc]
             [vulcan.analysis.categorize :as cat]))
 
-(defn- n-where [ds pred]
-  (->> (tc/rows ds :as-maps) (filter pred) count))
+(defn- n-where
+  "Count rows matching `pred`. Uses tablecloth's native filtering rather than
+  materializing all rows as maps."
+  [ds pred]
+  (-> ds (tc/select-rows pred) tc/row-count))
 
 (defn- median [xs]
   (let [v (vec (sort (remove nil? xs)))

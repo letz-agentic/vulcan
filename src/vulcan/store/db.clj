@@ -10,6 +10,7 @@
   for an in-memory store. Both satisfy next.jdbc's protocols, so callers do
   not care which they hold."
   (:require [clojure.java.io :as io]
+            [clojure.string :as str]
             [next.jdbc :as jdbc]
             [next.jdbc.prepare :as prep]
             [next.jdbc.result-set :as rs])
@@ -28,6 +29,13 @@
   names mechanically derivable from each other in both directions."
   [^String s]
   (keyword (.replace s \_ \-)))
+
+(defn kebab->snake
+  "`:cvss-v3-score` -> `:cvss_v3_score`. The inverse of `snake->kebab`.
+
+  Providers and the VEX importer speak kebab-case; columns are snake_case."
+  [k]
+  (keyword (str/replace (name k) "-" "_")))
 
 (def opts
   "Result-set options used everywhere: unqualified kebab-case keyword keys,
