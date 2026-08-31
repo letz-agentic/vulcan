@@ -37,6 +37,12 @@
 
 (def ^:private chart-counter (atom 0))
 
+(defn reset-chart-counter!
+  "Reset the chart image counter. Called at the start of each render to ensure
+  consistent naming within a single notebook render."
+  []
+  (reset! chart-counter 0))
+
 (def image-subdir
   "Where static chart PNGs are written, relative to the rendered `.qmd`.
 

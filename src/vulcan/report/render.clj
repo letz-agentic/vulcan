@@ -133,6 +133,7 @@
       (throw (ex-info "Unknown profile" {:profile profile
                                          :known (profile-names)})))
     (ensure-tools! profile)
+    (kinds/reset-chart-counter!)
     (let [path (notebook-path notebook)]
       (when-not (.exists (io/file path))
         (throw (ex-info "No such notebook" {:notebook notebook :path path})))
