@@ -13,9 +13,8 @@
     target_id  = sha256(scan_id, target, class, type)
     finding_id = sha256(scan_id, target, vuln_id, pkg_id, installed_version)"
   (:require [clojure.string :as str]
-            [vulcan.ingest.json :as vj])
-  (:import (java.time Instant OffsetDateTime)
-           (java.time.format DateTimeParseException)))
+            [vulcan.common :as common]
+            [vulcan.ingest.json :as vj]))
 
 ;; ---------------------------------------------------------------------------
 ;; identity
@@ -27,9 +26,11 @@
   plausible separator can legitimately occur inside a Trivy target or PURL,
   and [\"ab\" \"c\"] must not collide with [\"a\" \"bc\"]. `pr-str` quotes and
   escapes each part, so the encoding is unambiguous; it is stable across
-  platforms because the structure it adds is pure ASCII."
+  platforms because the structure it adds is pure ASCII.
+
+  Delegated to `vulcan.common/hash-id`."
   [& parts]
-  (vj/sha256 (.getBytes (pr-str (mapv #(or % "") parts)) "UTF-8")))
+  (apply common/hash-id parts))
 
 ;; ---------------------------------------------------------------------------
 ;; coercions
@@ -37,13 +38,11 @@
 (defn ->instant
   "Trivy emits RFC-3339 with an offset and sometimes with a `Z`. Anything
   unparseable becomes nil rather than failing the whole report: a missing date
-  is a gap in analysis, not a corrupt file."
+  is a gap in analysis, not a corrupt file.
+
+  Delegated to `vulcan.common/->instant`."
   [s]
-  (when-not (str/blank? s)
-    (try
-      (.toInstant (OffsetDateTime/parse s))
-      (catch DateTimeParseException _
-        (try (Instant/parse s) (catch DateTimeParseException _ nil))))))
+  (common/->instant s))
 
 (defn- non-blank [s] (when-not (str/blank? s) s))
 

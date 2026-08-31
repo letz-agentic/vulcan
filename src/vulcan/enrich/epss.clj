@@ -28,6 +28,11 @@
 (def api-url "https://api.first.org/data/v1/epss")
 (def csv-url "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz")
 
+(def csv-timeout-ms
+  "Timeout for downloading the bulk CSV. Higher than the default because it
+  is a large file that can take a while to download."
+  120000)
+
 (def batch-size
   "CVEs per API request. FIRST's default page limit is 100, and a longer
   comma-separated list also starts to strain the URL length."
@@ -59,7 +64,7 @@
               {:label      "epss"
                :fallback   {:status nil :body nil}
                :retryable? http/rate-limited?}
-              #(http/get-json* api-url {:query-params {"cve" (str/join "," ids)}}))]
+              #(http/get-json-with-status api-url {:query-params {"cve" (str/join "," ids)}}))]
     (some->> resp :body :data (keep row->map))))
 
 (defrecord EpssApiProvider [concurrency]
@@ -100,7 +105,7 @@
   "Download and decompress the current EPSS CSV. Returns a map of
   vulnerability id to row, or nil when unavailable."
   []
-  (when-let [resp (http/get-json csv-url {:raw-response? true :timeout-ms 120000})]
+  (when-let [resp (http/get-json csv-url {:raw-response? true :timeout-ms csv-timeout-ms})]
     (when (= 200 (:status resp))
       ;; The body arrives as a string, so it must be read back as bytes with a
       ;; charset that maps 1:1 onto them before gunzipping.

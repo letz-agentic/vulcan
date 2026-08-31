@@ -16,9 +16,9 @@
   The raw CVE record is kept in `vulnerability.circl_raw` — the same instinct
   as `scan.raw`, so a question we have not thought of yet does not need a
   re-fetch of the whole catalogue."
-  (:require [vulcan.enrich.http :as http]
-            [vulcan.enrich.provider :as p]
-            [vulcan.ingest.json :as vj]))
+  (:require [vulcan.common :as common]
+            [vulcan.enrich.http :as http]
+            [vulcan.enrich.provider :as p]))
 
 (def base-url "https://vulnerability.circl.lu")
 
@@ -61,8 +61,8 @@
     :attempts   attempts
     :fallback   {:status nil :body nil}
     :retryable? http/rate-limited?}
-   #(http/get-json* (vulnerability-url id)
-                    {:headers (http/circl-headers)})))
+   #(http/get-json-with-status (vulnerability-url id)
+                               {:headers (http/circl-headers)})))
 
 (defn fetch-sightings-count
   "How many sightings CIRCL holds for `id`.
@@ -76,9 +76,9 @@
     :attempts   attempts
     :fallback   {:status nil :body nil}
     :retryable? http/rate-limited?}
-   #(http/get-json* sighting-url
-                    {:query-params {"vuln_id" id}
-                     :headers      (http/circl-headers)})))
+   #(http/get-json-with-status sighting-url
+                               {:query-params {"vuln_id" id}
+                                :headers      (http/circl-headers)})))
 
 (defn- rate-limited-out?
   "Did this response run out of retries against a rate limit, rather than
@@ -102,7 +102,7 @@
             (cond-> {:vulnerability-id id
                      :circl-fetched-at (java.time.Instant/now)}
               record (assoc :description (description record)
-                            :circl-raw   (vj/write-str record))
+                            :circl-raw   (common/write-json record))
               sight  (assoc :sightings-count sight))))))))
 
 (defrecord CirclProvider [concurrency sightings?]

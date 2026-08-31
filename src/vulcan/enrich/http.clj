@@ -12,7 +12,7 @@
             [clojure.tools.logging :as log]
             [hato.client :as http]
             [jsonista.core :as j]
-            [vulcan.ingest.json :as vj]))
+            [vulcan.common :as common]))
 
 (def user-agent
   "Identify the client with a contact URL, which is what the instance policy
@@ -82,7 +82,7 @@
 
          (= 200 (:status resp))
          (try
-           (j/read-value (:body resp) vj/mapper)
+           (j/read-value (:body resp) common/mapper)
            (catch Exception e
              (log/warnf "%s returned unparseable JSON: %s" url (.getMessage e))
              nil))
@@ -109,11 +109,11 @@
           (let [now (quot (System/currentTimeMillis) 1000)]
             (when (> reset now) (* 1000 (- reset now))))))))
 
-(defn get-json*
+(defn get-json-with-status
   "Like `get-json`, but returns `{:status s :body parsed-or-nil}` so a caller
   can tell a genuine absence from a rate-limited retry. This is what
   `with-retries` inspects."
-  ([url] (get-json* url {}))
+  ([url] (get-json-with-status url {}))
   ([url opts]
    (let [resp (get-json url (assoc opts :raw-response? true))]
      (if (nil? resp)
@@ -121,7 +121,7 @@
        {:status         (:status resp)
         :retry-after-ms (retry-after-ms (:headers resp))
         :body           (when (= 200 (:status resp))
-                          (try (j/read-value (:body resp) vj/mapper)
+                          (try (j/read-value (:body resp) common/mapper)
                                (catch Exception e
                                  (log/warnf "%s returned unparseable JSON: %s"
                                             url (.getMessage e))
