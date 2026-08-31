@@ -25,8 +25,7 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
-            [vulcan.ingest.json :as vj]
-            [vulcan.ingest.trivy :as trivy]
+            [vulcan.common :as common]
             [vulcan.store.db :as db]
             [vulcan.store.write :as write])
   (:import (java.time Instant)))
@@ -77,7 +76,7 @@
       (when-not (statuses status)
         (log/warnf "unknown OpenVEX status %s for %s" (pr-str status) vuln-id))
       (for [scope (product-scope statement)]
-        {:decision-id      (trivy/hash-id vuln-id scope status source)
+        {:decision-id      (common/hash-id vuln-id scope status source)
          :vulnerability-id vuln-id
          :scope            scope
          :status           status
@@ -85,8 +84,8 @@
          :note             (or (:impact_statement statement)
                                (:action_statement statement))
          :decided-by       (or (:author statement) author)
-         :decided-at       (trivy/->instant (or (:timestamp statement) doc-timestamp))
-         :expires-at       (trivy/->instant (:expires statement))
+         :decided-at       (common/->instant (or (:timestamp statement) doc-timestamp))
+         :expires-at       (common/->instant (:expires statement))
          :source           source}))))
 
 (defn document->decisions
@@ -105,7 +104,7 @@
   changes nothing."
   [connectable file]
   (let [path (.getPath (io/file file))
-        doc  (vj/parse (vj/read-bytes file))
+        doc  (common/parse-json (common/read-bytes file))
         _    (when-not (:statements doc)
                (throw (ex-info "Not an OpenVEX document: no statements array"
                                {:file path})))
@@ -256,7 +255,7 @@
   ([connectable file opts]
    (let [doc (export connectable opts)]
      (io/make-parents (io/file file))
-     (spit file (str (vj/write-str doc) "\n"))
+     (spit file (str (common/write-json doc) "\n"))
      (log/infof "exported %d decisions to %s" (count (:statements doc)) (str file))
      {:file (str file) :decisions (count (:statements doc))})))
 
