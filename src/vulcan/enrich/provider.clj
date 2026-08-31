@@ -26,11 +26,13 @@
 ;; shared helpers
 
 (defn bounded-pmap
-  "Map `f` over `coll` with at most `n` calls in flight (spec section 7.2's
-  bounded concurrency, default 4).
+  "Map `f` over `coll` in batches of at most `n` (spec section 7.2's bounded
+  concurrency, default 4).
 
-  Not `pmap`: its parallelism is tied to the number of processors, which is
-  the wrong bound entirely when the constraint is somebody else's rate limit."
+  Unlike bare `pmap` — whose parallelism is tied to the number of processors —
+  this processes in fixed-size batches. That is the right constraint when the
+  limit is somebody else's rate limit rather than our own CPU. Each batch
+  completes before the next begins, so at most `n` requests are ever in flight."
   [n f coll]
   (->> coll
        (partition-all (max 1 n))

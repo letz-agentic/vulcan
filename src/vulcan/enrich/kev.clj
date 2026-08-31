@@ -24,6 +24,11 @@
 (def catalog-url
   "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json")
 
+(def catalog-timeout-ms
+  "Timeout for fetching the KEV catalogue. Higher than the default because
+  CISA's server can be slow."
+  60000)
+
 (defn- ->date [s]
   (when s (try (LocalDate/parse (str s)) (catch Exception _ nil))))
 
@@ -43,7 +48,7 @@
               {:label      "kev"
                :fallback   {:status nil :body nil}
                :retryable? http/rate-limited?}
-              #(http/get-json* catalog-url {:timeout-ms 60000}))]
+              #(http/get-json-with-status catalog-url {:timeout-ms catalog-timeout-ms}))]
     (when-let [vulns (some-> resp :body :vulnerabilities)]
       (log/infof "KEV catalogue: %d entries" (count vulns))
       (into {} (comp (keep entry->map) (map (juxt :vulnerability-id identity))) vulns))))

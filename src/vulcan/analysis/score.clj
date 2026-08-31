@@ -45,6 +45,12 @@
   "Beyond a year, older is not more urgent -- it is just older."
   365.0)
 
+(def spread-saturation-artifacts
+  "Spread component saturates at this many artifacts, so that one widely-used
+  package does not drown out everything else. 32 is log2(32)=5, giving a nice
+  integer log scale where 2 artifacts = 0.2, 4 = 0.4, 8 = 0.6, 16 = 0.8, 32+ = 1.0."
+  32)
+
 ;; ---------------------------------------------------------------------------
 ;; components, each [0,1]
 
@@ -68,10 +74,10 @@
 (defn spread-component
   "Log-scaled count of artifacts affected in scope, so that one upgrade fixing
   many images floats up without a single widely-used package drowning out
-  everything else. Saturates at 32 artifacts."
+  everything else. Saturates at `spread-saturation-artifacts`."
   [n-artifacts]
   (let [n (max 1 (or n-artifacts 1))]
-    (min 1.0 (/ (Math/log (double n)) (Math/log 32.0)))))
+    (min 1.0 (/ (Math/log (double n)) (Math/log (double spread-saturation-artifacts))))))
 
 (defn age-component
   "Saturating at `age-saturation-days`. A finding with no publication date
