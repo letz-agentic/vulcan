@@ -16,6 +16,7 @@
   (:require [clojure.string :as str]
             [scicloj.tableplot.v1.plotly :as plotly]
             [tablecloth.api :as tc]
+            [vulcan.analysis.categorize :as cat]
             [vulcan.analysis.core :as core]
             [vulcan.analysis.diff :as diff]
             [vulcan.viz.theme :as theme]))
@@ -92,7 +93,7 @@
             :mark {:type "bar" :tooltip true}
             :encoding {:x {:field "severity" :type "nominal"
                            :title (theme/severity-title :severity)
-                           :sort (:severity-order @(resolve 'vulcan.analysis.categorize/defaults))}
+                           :sort (:severity-order cat/defaults)}
                        :y {:field "n" :type "quantitative"
                            :title (theme/severity-title :n)}
                        :color (vl-color "severity" theme/severity-colors sevs)}})
@@ -353,7 +354,12 @@
 ;; ---------------------------------------------------------------------------
 
 (def all-charts
-  "Every chart function, for the test that renders each to both targets."
+  "Every chart function, for the test that renders each to both targets.
+
+  Note: `fix-first-table` is intentionally excluded — it returns a tablecloth
+  dataset for `k/table` to render, not a Plotly/Vega-Lite spec. The chart
+  tests verify that chart specs render to both targets; tables have their own
+  test path through `kinds/table`."
   {:severity-bars         severity-bars
    :severity-by-artifact  severity-by-artifact
    :exploitability-matrix exploitability-matrix
