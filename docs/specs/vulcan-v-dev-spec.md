@@ -61,13 +61,16 @@ Layers and their namespaces:
 
 | Layer | Namespace prefix | Depends on | Must not depend on |
 |---|---|---|---|
-| Ingestion | `vulcan.ingest.*` | jsonista, next.jdbc, DuckDB | tableplot, Clay |
-| Store | `vulcan.store.*` | next.jdbc, DuckDB, HoneySQL | everything above |
-| Enrichment | `vulcan.enrich.*` | hato/http, store | viz, notebooks |
+| Common | `vulcan.common` | jsonista | nothing (shared utilities) |
+| Ingestion | `vulcan.ingest.*` | common, jsonista, malli | tableplot, Clay |
+| Store | `vulcan.store.*` | next.jdbc, DuckDB, HoneySQL, tablecloth | ingest, enrich, analysis, viz, notebooks |
+| Enrichment | `vulcan.enrich.*` | common, hato/http, store | ingest, viz, notebooks |
 | Analysis | `vulcan.analysis.*` | tablecloth, store | viz, notebooks |
 | Visualization | `vulcan.viz.*` | tableplot, analysis | notebooks |
 | Reporting | `vulcan.report.*` + `notebooks/` | Clay, Kindly, viz, analysis | nothing depends on these |
 | CLI | `vulcan.cli` (+ `bb.edn` tasks) | all | — |
+
+Note: The store layer returns tablecloth datasets directly from queries, which simplifies the API between store and analysis. This is an intentional design choice — see ADR 0002.
 
 The dependency direction is enforced by a test (`vulcan.arch-test`) that scans `ns` forms; this is cheap and prevents the lab-file entropy from returning.
 
@@ -111,12 +114,13 @@ vulcan-v/
 │   ├── quarto/              ; _quarto.yml fragments, theme.scss, reference.pptx
 │   └── fixtures/trivy/      ; small real-world JSON reports (anonymised)
 ├── src/vulcan/
-│   ├── ingest/{trivy,json,dir}.clj
+│   ├── common.clj           ; shared utilities (JSON, hashing, time parsing)
+│   ├── ingest/{trivy,json,dir,schema}.clj
 │   ├── store/{db,migrate,write,query}.clj
-│   ├── enrich/{circl,cache,epss,kev}.clj
+│   ├── enrich/{provider,http,circl,cache,epss,kev,vex}.clj
 │   ├── analysis/{core,score,categorize,diff,trend}.clj
 │   ├── viz/{theme,charts,static}.clj
-│   ├── report/{context,kinds,templates}.clj
+│   ├── report/{context,kinds,render}.clj
 │   └── cli.clj
 ├── notebooks/
 │   ├── _template_report.clj
@@ -297,9 +301,9 @@ bb ingest  --dry-run               # parse + validate only
 
 ### 7.1 Source
 
-CIRCL Vulnerability-Lookup (`https://vulnerability.circl.lu`): `GET /api/vulnerability/{id}` for description and cross-source data; `GET /api/cisa_kev/` for the KEV catalogue; `GET /api/sighting/?vuln_id=…` for exploitation sightings; `POST /api/exploit-hazard/batch` for EPSS-based hazard. Responses carry `RateLimit-*` headers; authentication headers (`CVE-API-ORG/USER/KEY`) are optional for read endpoints but supported through env vars.
+CIRCL Vulnerability-Lookup (`https://vulnerability.circl.lu`): `GET /api/vulnerability/{id}` for description and cross-source data; `GET /api/cisa_kev/` for the KEV catalogue; `GET /api/sighting/?vuln_id=…` for exploitation sightings; `POST /api/exploit-hazard/batch` for EPSS-based hazard. Responses carry `RateLimit-*` headers; authentication is via the `X-API-KEY` header, set through the `CIRCL_API_KEY` environment variable. The instance's machine-readable policy at `/.well-known/api-policy.json` is authoritative for rate limits: 20 requests/minute anonymous, 40 with an API key.
 
-An alternative is FIRST's EPSS CSV (daily bulk download, simpler to cache) — kept as a second `epss` provider behind the same protocol because it is bulk, offline-friendly and independent of CIRCL availability. The `Enricher` protocol has one method, `(enrich [this ids])` → seq of maps, so providers are swappable and mockable.
+An alternative is FIRST's EPSS CSV (daily bulk download, simpler to cache) — kept as a second `epss` provider behind the same protocol because it is bulk, offline-friendly and independent of CIRCL availability. The `Enricher` protocol has two methods: `(provider-name [this])` → keyword for logs and reports, and `(enrich [this ids])` → seq of maps. Providers are swappable and mockable.
 
 ### 7.2 Cache and freshness
 
@@ -341,8 +345,8 @@ Each finding is placed on four orthogonal axes, materialised as columns so that 
 |---|---|---|
 | Severity | CRITICAL … UNKNOWN | Trivy-selected `severity` |
 | Exploitability | `exploited` (KEV or sightings) · `likely` (EPSS ≥ 0.1) · `possible` (EPSS ≥ 0.01) · `unlikely` | enrichment |
-| Fixability | `fixable` (status=fixed & fixed_version present) · `vendor-declined` (will_not_fix, end_of_life) · `pending` (affected, fix_deferred, under_investigation) · `unknown` | `status` |
-| Exposure | `os` · `lang` · `config` · `secret` | `target.class` |
+| Fixability | `fixable` (status=fixed & fixed_version present) · `vendor-declined` (will_not_fix, end_of_life, not_affected) · `pending` (affected, fix_deferred, under_investigation) · `unknown` | `status` |
+| Exposure | `os` · `lang` · `config` · `secret` · `license` · `unknown` | `target.class` |
 
 Thresholds are data in `vulcan.analysis.categorize/defaults`, overridable in the context options, and printed in every report's appendix.
 
@@ -362,7 +366,16 @@ Default weights (0.35, 0.30, 0.20, 0.10, 0.05) sum to 1. Property tests assert m
 
 ### 8.4 Diff and trend
 
-`diff` compares the latest scan of each artifact with its previous one and labels findings `new`, `resolved`, `persisting`; `resolved` is further split into `fixed-by-upgrade` (installed_version changed) versus `disappeared` (package gone). `trend` is `v_scan_summary` joined to time, with an optional weekly resample. Both are tablecloth datasets so they can be plotted directly.
+`diff` compares the latest scan of each artifact with its previous one and labels findings:
+
+- `new` — finding is in the current scan but not the previous
+- `persisting` — finding is in both scans
+- `fixed-by-upgrade` — package still installed but at a newer version that clears the finding
+- `disappeared` — package is no longer in the artifact
+- `no-longer-reported` — package is unchanged but the finding is no longer reported (advisory withdrawn or scope changed)
+- `resolved` — fallback when `--list-all-pkgs` data is unavailable to distinguish the above
+
+`trend` is `v_scan_summary` joined to time, with an optional weekly resample. Both are tablecloth datasets so they can be plotted directly.
 
 ---
 
@@ -454,7 +467,9 @@ Quarto is invoked from a pinned path with a version check and a checksum verific
 
 ## 11. CLI, build and operations
 
-`bb.edn` tasks: `check` (deps + Quarto + DuckDB driver sanity), `migrate`, `ingest`, `enrich`, `decisions`, `render`, `report`, `test`, `new-notebook`. Each task delegates to `clojure -M:cli -m vulcan.cli <task>` so that the same code path is available from the REPL as `(vulcan.cli/-main "ingest" ...)`.
+`bb.edn` tasks: `check`, `migrate`, `ingest`, `enrich`, `decisions`, `summary`, `render`, `report`, `test`, `new-notebook`, `fixtures`. Most tasks delegate to `clojure -M:cli -m vulcan.cli <task>` so that the same code path is available from the REPL as `(vulcan.cli/-main "ingest" ...)`.
+
+Note: `test`, `new-notebook`, and `fixtures` are bb.edn-native tasks that do not delegate through the CLI, as they require Babashka-specific functionality (Kaocha invocation, file copying, fixture regeneration).
 
 Configuration precedence: CLI flags > env (`VULCAN_DB`, `VULCAN_PROFILE`, `CIRCL_API_*`) > `vulcan.edn` in the working directory > defaults. The DuckDB file path defaults to `data/vulcan.duckdb`.
 
